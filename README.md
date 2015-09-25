@@ -9,7 +9,7 @@ http://cs.lth.se/peter-moller/script/network-info-en/
 Overview of how the script works:
 ---------------------------------
 
-Data is gathered using the commands `ifconfig`, `networksetup` and `scutil`. The latter is used for VPN, but the solutions is not entirely satisfying.
+Data is gathered using the commands `ifconfig`, `networksetup` and `scutil`. The network interfaces that the computer knows about is presented in the order they are used. `scutil` is used for VPN, but the solutions is not entirely satisfying (since VPN:s aren't easily placed in a priority chain).
 
 Default interface is found with `route get www.lu.se`
 
