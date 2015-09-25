@@ -21,3 +21,5 @@ One of the more useful parts of the script is the “Quality” assessment of th
 | 20-30:     | Good       |
 | 10-20:     | Poor       |
 | <10:       | Unusable   |
+
+These values are assigned by me through experience and they seems to be reasonable.
