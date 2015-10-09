@@ -3,7 +3,7 @@ A bash script for OS X that details information about the network
 
 ![Screendump of network_info](http://fileadmin.cs.lth.se/cs/Personal/Peter_Moller/scripts/bilder/network_info.png)
 
-More details about the script can be found here:
+More information about the script can be found here:
 http://cs.lth.se/peter-moller/script/network-info-en/
 
 -----
