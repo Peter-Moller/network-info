@@ -129,7 +129,8 @@ function UpdateScript()
 
 # Basic settings:
 # PREFIX points to where the data files are stored. 
-DEFAULT_INTERFACE="$(route get www.lu.se | grep interface | awk '{ print $2 }')"
+# DEFAULT_INTERFACE="$(route get www.lu.se | grep interface | awk '{ print $2 }')"
+DEFAULT_INTERFACE="$(/usr/sbin/netstat -f inet -rn | grep "^default" | awk '{print $6}')"
 MY_IP_ADDRESS="$(ifconfig $DEFAULT_INTERFACE | grep "inet " | awk '{ print $2 }')"
 #DOMAIN="`ipconfig getpacket en0 | grep 'domain_name (string)' | awk '{ print $3 }'`"
 DOMAIN="$(hostname | cut -d\. -f2-7)"
