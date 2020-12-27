@@ -17,13 +17,13 @@
 # limitations under the License.
 #
 # Version:
-VER="1.0"
+VER="1.5"
 
 help() {
   echo
-  echo "Usage: $0 [-u]"
+  echo "Usage: $0 [-w]"
   echo
-  echo "-u: Update the script"
+  echo "-w: Only show the wireless information."
   echo
   echo "If run by root: datafiles in /Library/cs.lth.se/OpenPorts (Mac) or /usr/share/cs.lth.se/OpenPorts (Linux) are created, but no output."
   echo "If run by any other user: output is displayed based on those datafiles."
@@ -35,102 +35,29 @@ help() {
 }
 
 # Read the parameters:
-while getopts ":hud" opt; do
+while getopts ":hwd" opt; do
 case $opt in
-    u ) fetch_new=t;;
+    w ) WiFiOnly=t;;
     d ) debug=t;;
  \?|h ) help;;
 esac
 done
 
 
-# Find where the script resides (so updates update the correct version) -- without trailing slash
-DirName="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-# What is the name of the script? (without any PATH)
-ScriptName="$(basename $0)"
-# Is the file writable?
-if [ -w "${DirName}/${ScriptName}" ]; then
-  Writable="yes"
+# Find where the script resides. If it's a link, get *that* directory
+if [ -L "${BASH_SOURCE[0]}" ]; then
+  DirName="$(dirname $(readlink ${BASH_SOURCE[0]}))"
 else
-  Writable="no"
+  DirName="$(dirname ${BASH_SOURCE[0]})"
 fi
-# Who owns the script?
-ScriptOwner="$(ls -ls ${DirName}/${ScriptName} | awk '{print $4":"$5}')"
+# What is the name of the script?
+ScriptName="$(basename ${BASH_SOURCE[0]})"
 
 
-# Check for update
-function CheckForUpdate()
-{
-  NewScriptAvailable=f
-  # First, download the script from the server
-  /usr/bin/curl -s -f -e "$ScriptName ver:$VER" -o /tmp/"$ScriptName" http://fileadmin.cs.lth.se/cs/Personal/Peter_Moller/scripts/"$ScriptName" 2>/dev/null
-  /usr/bin/curl -s -f -e "$ScriptName ver:$VER" -o /tmp/"$ScriptName".sha1 http://fileadmin.cs.lth.se/cs/Personal/Peter_Moller/scripts/"$ScriptName".sha1 2>/dev/null
-  ERR=$?
-  # Find, and print, errors from curl (we assume both curl's above generate the same errors, if any)
-  if [ "$ERR" -ne 0 ] ; then
-    # Get the appropriate error message from the curl man-page
-    # Start with '       43     Internal error. A function was called with a bad parameter.'
-    # end get it down to: ' 43: Internal error.'
-    ErrorMessage="$(MANWIDTH=500 man curl | egrep -o "^\ *${ERR}\ \ *[^.]*." | perl -pe 's/[0-9](?=\ )/$&:/;s/  */ /g')"
-    echo $ErrorMessage
-    echo "The file \"$ScriptName\" could not be fetched from \"http://fileadmin.cs.lth.se/cs/Personal/Peter_Moller/scripts/$ScriptName\""
-  fi
-  # Compare the checksum of the script with the fetched sha1-sum
-  # If they diff, there is a new script available
-  if [ "$(openssl sha1 /tmp/"$ScriptName" | awk '{ print $2 }')" = "$(less /tmp/"$ScriptName".sha1)" ]; then
-    if [ -n "$(diff /tmp/$ScriptName $DirName/$ScriptName 2> /dev/null)" ] ; then
-      NewScriptAvailable=t
-    fi
-  else
-    CheckSumError=t
-  fi
-}
-
-
-# Update [and quit]
-function UpdateScript()
-{
-  CheckForUpdate
-  if [ "$CheckSumError" = "t" ]; then
-    echo "Checksum of the fetched \"$ScriptName\" does NOT check out. Look into this! No update performed!"
-    exit 1
-  fi
-  # If new script available, update
-  if [ "$NewScriptAvailable" = "t" ]; then
-    # But only if the script is writable!
-    if [ "$Writable" = "yes" ]; then
-      /bin/rm -f "$DirName"/"$ScriptName" 2> /dev/null
-      /bin/mv /tmp/"$ScriptName" "$DirName"/"$ScriptName"
-      chmod 755 "$DirName"/"$ScriptName"
-      /bin/rm /tmp/"$ScriptName".sha1 2>/dev/null
-      echo "A new version of \"$ScriptName\" was installed successfully!"
-      echo "Script updated. Exiting"
-
-      # Send a signal that someone has updated the script
-      # This is only to give me feedback that someone is actually using this. I will *not* use the data in any way nor give it away or sell it!
-      /usr/bin/curl -s -f -e "$ScriptName ver:$VER" -o /dev/null http://fileadmin.cs.lth.se/cs/Personal/Peter_Moller/scripts/updated 2>/dev/null
-
-      exit 0
-    else
-      echo "Script cannot be updated!"
-      echo "It is located in \"${DirName}\" and is owned by \"${ScriptOwner}\""
-      echo "You need to sort this out yourself!!"
-      echo "Exiting..."
-      exit 1
-    fi
-  else
-    echo "You already have the latest version of \"${ScriptName}\"!"
-    exit 0
-  fi
-}
-
-
-[[ "$fetch_new" = "t" ]] && UpdateScript
 
 # Basic settings:
 # PREFIX points to where the data files are stored. 
-# DEFAULT_INTERFACE="$(route get www.lu.se | grep interface | awk '{ print $2 }')"
-DEFAULT_INTERFACE="$(/usr/sbin/netstat -f inet -rn | grep "^default" | awk '{print $6}')"
+DEFAULT_INTERFACE="$(netstat -rn | egrep -A3 "Internet:" | egrep "^default" | head -1 | awk '{print $NF}')"
 MY_IP_ADDRESS="$(ifconfig $DEFAULT_INTERFACE | grep "inet " | awk '{ print $2 }')"
 #DOMAIN="`ipconfig getpacket en0 | grep 'domain_name (string)' | awk '{ print $3 }'`"
 DOMAIN="$(hostname | cut -d\. -f2-7)"
@@ -139,8 +66,6 @@ MTIME120m="-mtime +120m"
 MTIME7d="-mtime -7d"
 # NAT has content if we are on a private net (^192.168.|^172.16.|^10.) and empty otherwise
 NAT="$(echo $MY_IP_ADDRESS | egrep "^192.168.|^172.16.|^10.")"
-# ScriptName is simply the name of the script...
-ppp_presented=""
 
 # (Colors can be found at http://en.wikipedia.org/wiki/ANSI_escape_code, http://graphcomp.com/info/specs/ansi_col.html and other sites)
 Reset="\e[0m"
@@ -181,15 +106,7 @@ Face="$RES"
 FontColor="$RES"
 
 
-# If the script is too old, check for update
-# 2014-03-10: not included yet
-#if [ -z "$(find $DirName/${ScriptName} -type f ${MTIME7d} 2> /dev/null)" ]; then
-#  CheckForUpdate
-#fi
-
-
 # ----------------------------------------------------------------------------------------------------
-#
 # Print warnings
 
 # If we don't have an IP-address ($DEFAULT_INTERFACE = "") warn the user!!
@@ -205,7 +122,6 @@ else
 fi
 
 # End print warnings
-#
 # ----------------------------------------------------------------------------------------------------
 
 
@@ -363,100 +279,94 @@ FormatStringInterfaces="%-4s%-22s%-17s%-17s%-15s%-17s%-17s%-19s%-5s"
 
 
 
-NIfile="/tmp/NetworkInterfaces_$$.txt"
-# networksetup -listnetworkserviceorder  | grep -A 1 "^([0-9])\ " | grep "[a-z][0-9])$" | cut -d: -f2,3 | sed -e 's/, Device//g' -e 's/)//g' -e 's/^ //g' > $NSOfile
-networksetup -listnetworkserviceorder | egrep "^\([0-9\*]*\)\ " | sed -e 's/^(//g' -e 's/) /:/' > $NIfile
-# Example:
-# 1:Bluetooth DUN
-# 2:Ethernet 1
-# 3:Ethernet 2
-# 4:Display Ethernet
-# 5:Display FireWire
-# 6:Wi-Fi
-# *:Bluetooth PAN
-# 7:Thunderbolt Bridge
-
-# Determine if there is a ppp-connection:
-ppp="$(ifconfig | grep "ppp[0-9]" | awk '{print $1}' | cut -d: -f1)"
-# Ex: ppp=’ppp0’
-# Also get the data
-if [ -n "$ppp" ]; then
-  # Find the ppp-address:
-  ppp_temp="$(ifconfig | grep -A1 $ppp | tail -1 | grep 'inet ' | awk '{print $2}')"
-  # Ex: ppp_temp='130.235.252.33'
-  ppp_mask="$(ifconfig | grep -A1 $ppp | tail -1 | grep 'inet ' | awk '{print $6}' | cut -c3-)"
-  ppp_mask1="$(echo "ibase=16; $(echo $ppp_mask | cut -c1-2 | tr '[:lower:]' '[:upper:]')" | bc)"
-  ppp_mask2="$(echo "ibase=16; $(echo $ppp_mask | cut -c3-4 | tr '[:lower:]' '[:upper:]')" | bc)"
-  ppp_mask3="$(echo "ibase=16; $(echo $ppp_mask | cut -c5-6 | tr '[:lower:]' '[:upper:]')" | bc)"
-  ppp_mask4="$(echo "ibase=16; $(echo $ppp_mask | cut -c7-8 | tr '[:lower:]' '[:upper:]')" | bc)"
-  ppp_mask="${ppp_mask1}.${ppp_mask2}.${ppp_mask3}.${ppp_mask4}"
-fi
-
 # Print the head
-
-# First, print if there is an update for the script available
-printf "$UpdateMessage"
 printf "${ESC}${BlackBack};${WhiteFont}mHostname:${ESC}${WhiteBack};${BlackFont}m $(hostname) ${Reset}   ${ESC}${BlackBack};${WhiteFont}mComputer Name:${ESC}${WhiteBack};${BlackFont}m ${ComputerName} ${Reset}   ${ESC}${BlackBack};${WhiteFont}mRunning:${ESC}${WhiteBack};${BlackFont}m $SW_VERS ${Reset}   ${ESC}${BlackBack};${WhiteFont}mDate & time:${ESC}${WhiteBack};${BlackFont}m $(date +%F", "%R) ${Reset}\n"
 echo
-#printf "${ESC}${BoldFace}mInformation about network interfaces.${Reset}\n${ESC}${ItalicFace}mExplanation: ${ESC}${ActiveTextColor};${ItalicFace}mActive interface${Reset}, ${ESC}${InactiveTextColor};${ItalicFace}mInactive interface${Reset}, ${ESC}${DisabledTextColor};${ItalicFace}mDisabled interface${Reset}\n"
-printf "${ESC}${ItalicFace}mExplanation: ${ESC}${ActiveTextColor};${ItalicFace}mActive interface${Reset}, ${ESC}${InactiveTextColor};${ItalicFace}mInactive interface${Reset}, ${ESC}${DisabledTextColor};${ItalicFace}mDisabled interface${Reset}\n"
-echo
 
-# Print the title line
-printf "${ESC}${UnderlineFace};${YellowFont}m${FormatStringInterfaces}${Reset}\n" "#" "Hardware Port" "Interface" "IPv4-address" "Config." "Subnet mask" "Router" "MAC-address" "Media Speed"
+# Print the wired network info only if WiFiOnly ≠ t
+if [ ! "$WiFiOnly" = "t" ]; then
+  # Get the info
+  NetworkInfoFile="/tmp/NetworkInterfaces_$$.txt"
+  # networksetup -listnetworkserviceorder  | grep -A 1 "^([0-9])\ " | grep "[a-z][0-9])$" | cut -d: -f2,3 | sed -e 's/, Device//g' -e 's/)//g' -e 's/^ //g' > $NSOfile
+  networksetup -listnetworkserviceorder | egrep "^\([0-9\*]*\)\ " | sed -e 's/^(//g' -e 's/) /:/' | egrep -v "\*" > $NetworkInfoFile
+  # Example:
+  # 1:Bluetooth DUN
+  # 2:Ethernet 1
+  # 3:Ethernet 2
+  # 4:Display Ethernet
+  # 5:Display FireWire
+  # 6:Wi-Fi
+  # *:Bluetooth PAN
+  # 7:Thunderbolt Bridge
 
-# Read the file and print the output
-exec 4<"$NIfile"
+  # Print the title line
+  printf "${ESC}${ItalicFace}mExplanation: ${ESC}${ActiveTextColor};${ItalicFace}mActive interface${Reset}, ${ESC}${InactiveTextColor};${ItalicFace}mInactive interface${Reset}, ${ESC}${DisabledTextColor};${ItalicFace}mDisabled interface${Reset}\n"
+  echo
+  printf "${ESC}${UnderlineFace};${YellowFont}m${FormatStringInterfaces}${Reset}\n" "#" "Hardware Port" "Interface" "IPv4-address" "Config." "Subnet mask" "Router" "MAC-address" "Media Speed"
 
-while IFS=: read -u 4 IFNum IFName
-do
-  Interface="$(networksetup -listallhardwareports 2>/dev/null | grep -A1 "Hardware Port: $IFName" | tail -1 | awk '{print $2}')"
-  # Ex: en0
-  MediaSpeed="$(networksetup -getMedia "$IFName" 2>/dev/null | grep "^Active" | cut -d: -f2-)"
-  # Ex: "1000baseT" or "autoselect"
-  Configuration="$(networksetup -getinfo "$IFName" 2>/dev/null | grep Configuration | awk '{print $1}')"
-  # Ex: "DHCP" or "Manual"
-  IPaddress="$(networksetup -getinfo "$IFName" 2>/dev/null | grep "^IP address" | cut -d: -f2)"
-  # Ex: " 130.235.16.211"
-  SubnetMask="$(networksetup -getinfo "$IFName" 2>/dev/null | grep "^Subnet mask" | cut -d: -f2)"
-  # Ex: " 255.255.254.0"
-  Router="$(networksetup -getinfo "$IFName" 2>/dev/null | grep "^Router" | cut -d: -f2)"
-  # Ex: " 130.235.16.1"
-  #MACaddress="$(networksetup -getinfo "$IFName" | grep "^Ethernet Address" | cut -d: -f2-7)"
-  MACaddress="$(ifconfig "$Interface" 2>/dev/null | grep "ether\ " | awk '{print $2}')"
-  # Ex: " 00:3e:e1:be:06:59"
-  Status="$(ifconfig  "$Interface" 2>/dev/null | grep "status:\ " | awk '{print $2}')"
-  # Ex: "active"
+  # Read the file and print the output
+  exec 4<"$NetworkInfoFile"
+  while IFS=: read -u 4 IFNum IFName
+  do
+    # Determine of a VPN connection is active:
+    # Sample output from the command: '* (Connected)      199F727B-C91D-4A6E-8A0B-4745179895F2 IPSec              "VPN (Cisco IPSec)"              [IPSec]'
+    if [ -n "$(scutil --nc list | egrep "Connected")" -a "$IFName" = "$(scutil --nc list | egrep "Connected" | cut -d\" -f2)" ]; then
+      Interface="$(netstat -rn | egrep -A3 "Internet:" | egrep default | head -1 | awk '{print $NF}')"
+      # Ex: 'utun5'
+      MediaSpeed="Unknown"
+      Configuration="Unknown"
+      IPaddress="$(ifconfig $Interface | egrep "\-\->" | awk '{print $4}')"
+      # Ex: '10.190.1.1'
+      SubnetMaskTemp="$(ifconfig $Interface | egrep "\-\->" | awk '{print $NF}' | sed -e 's/^0x//')"
+      # Ex: 'ffffffff'
+      SubNetP1="$(echo "ibase=16; $(echo $SubnetMaskTemp | cut -c1-2 | tr '[:lower:]' '[:upper:]')" | bc)"
+      SubNetP2="$(echo "ibase=16; $(echo $SubnetMaskTemp | cut -c3-4 | tr '[:lower:]' '[:upper:]')" | bc)"
+      SubNetP3="$(echo "ibase=16; $(echo $SubnetMaskTemp | cut -c5-6 | tr '[:lower:]' '[:upper:]')" | bc)"
+      SubNetP4="$(echo "ibase=16; $(echo $SubnetMaskTemp | cut -c7-8 | tr '[:lower:]' '[:upper:]')" | bc)"
+      SubnetMask="${SubNetP1}.${SubNetP2}.${SubNetP3}.${SubNetP4}"
+      # Ex: '255.255.255.255'
+      Router="Unknown"
+      # Ex: " 130.235.16.1"
+      #MACaddress="$(networksetup -getinfo "$IFName" | grep "^Ethernet Address" | cut -d: -f2-7)"
+      MACaddress="Unknown"
+      # Ex: " 00:3e:e1:be:06:59"
+      Status="$(scutil --nc status "$IFName" | head -1)"
+      # Ex: 'Connected'
+    else
+      Interface="$(networksetup -listallhardwareports 2>/dev/null | grep -A1 "Hardware Port: $IFName" | tail -1 | awk '{print $2}')"
+      # Ex: en0
+      MediaSpeed="$(networksetup -getMedia "$IFName" 2>/dev/null | grep "^Active" | cut -d: -f2-)"
+      # Ex: "1000baseT" or "autoselect"
+      Configuration="$(networksetup -getinfo "$IFName" 2>/dev/null | grep Configuration | awk '{print $1}')"
+      # Ex: "DHCP" or "Manual"
+      IPaddress="$(networksetup -getinfo "$IFName" 2>/dev/null | grep "^IP address" | cut -d: -f2)"
+      # Ex: " 130.235.16.211"
+      SubnetMask="$(networksetup -getinfo "$IFName" 2>/dev/null | grep "^Subnet mask" | cut -d: -f2)"
+      # Ex: " 255.255.254.0"
+      Router="$(networksetup -getinfo "$IFName" 2>/dev/null | grep "^Router" | cut -d: -f2)"
+      # Ex: " 130.235.16.1"
+      #MACaddress="$(networksetup -getinfo "$IFName" | grep "^Ethernet Address" | cut -d: -f2-7)"
+      MACaddress="$(ifconfig "$Interface" 2>/dev/null | grep "ether\ " | awk '{print $2}')"
+      # Ex: " 00:3e:e1:be:06:59"
+      Status="$(ifconfig  "$Interface" 2>/dev/null | grep "status:\ " | awk '{print $2}')"
+      # Ex: "active"
+    fi
 
-  # Cludge to present VPN information
-  # This has been tested with L2TP and it *seems* to work
-  if [ "$(scutil --nc status "$IFName" 2>/dev/null | head -1)" = "Connected" ]; then
-    Status="active"
-    Interface="$(scutil --nc status "$IFName" | grep InterfaceName | cut -d: -f2 | sed 's/\ //')"
-    IPaddress="$ppp_temp"
-    Configuration="-"
-    SubnetMask="$ppp_mask"
-    Router="-"
-    MACaddress="-"
-    MediaSpeed="-"
-    ppp_presented="t"
-  fi
+    # Set colors for printing)
+    if [ "$IFNum" = "*" ]; then
+      TextColor="${DisabledTextColor}"
+    elif [ "$Status" = "active" -o "$Status" = "Connected" ]; then
+      TextColor="${ActiveTextColor}"
+      [ "$IFName" = "Wi-Fi" ] && IFName="Wi-Fi (details below)"
+    elif [ ! "$Status" = "active" ]; then
+      TextColor="${InactiveTextColor}"
+    fi
+    printf "${ESC}${TextColor}m${FormatStringInterfaces}${Reset}\n" "$IFNum" "$IFName" "$Interface" "${IPaddress# }" "$Configuration" "${SubnetMask# }" "${Router# }" "${MACaddress# }" "${MediaSpeed}" 
+  done
+  echo
+  # Clean up the $NSOfile
+  /bin/rm "$NetworkInfoFile" 2>/dev/null
 
-  # Set colors for printing)
-  if [ "$IFNum" = "*" ]; then
-    TextColor="${DisabledTextColor}"
-  elif [ "$Status" = "active" ]; then
-    TextColor="${ActiveTextColor}"
-    [ "$IFName" = "Wi-Fi" ] && IFName="Wi-Fi (details below)"
-  elif [ ! "$Status" = "active" ]; then
-    TextColor="${InactiveTextColor}"
-  fi
-  printf "${ESC}${TextColor}m${FormatStringInterfaces}${Reset}\n" "$IFNum" "$IFName" "$Interface" "${IPaddress# }" "$Configuration" "${SubnetMask# }" "${Router# }" "${MACaddress# }" "${MediaSpeed}" 
-done
-
-# Print information about ppp (if any)
-if [ -n "$ppp" -a -z "$ppp_presented" ]; then
-  printf "${ESC}${ActiveTextColor}m${FormatStringInterfaces}${Reset}\n" "?" "-" "$ppp" "${ppp_temp}" "-" "${ppp_mask}" "-" "-" "-"
 fi
 
 # Print extra information about WiFi - if it is configured
@@ -544,13 +454,8 @@ if [ ! "$(${AP})" = "AirPort: Off" ]; then
   Frequency_block="${ESC}${HeadBack};${HeadText}mFrequency:${Reset}${ESC}${DataBack};${DataText}m ${Frequency} GHz ${Reset} "
 
   # Print the information
-  echo
-  echo
   printf "${ESC}${WhiteFont};${BoldFace};${BlackBack}mWi-Fi details:${Reset}  \n"
   printf "${SSID_block}${Auth_block}${Max_block}${Signal_block}${Noice_block}${QualityBlock}${Channel_block}${Frequency_block}\n"
 fi
-
-# Clean up the $NSOfile
-/bin/rm "$NIfile" 2>/dev/null
 
 exit 0
