@@ -415,15 +415,16 @@ fi
 # 10 - 15 dB lowest useful signal; slow data speeds; may sometime loose association.
 #   <10   dB AP may be detectable, but rarely useful signal; rarely maintains association.
 # 
-AP="/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I"
-if [ ! "$(${AP})" = "AirPort: Off" ]; then
+AP="$(/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I)"
+if [ ! "${AP}" = "AirPort: Off" ]; then
   # Gather information
-  SSID="$(${AP} | grep "\ SSID" | cut -d: -f2- | sed 's/ //')"  # SSID=WppW
-  Auth="$(${AP} | grep "link auth" | awk '{print $3}' | tr '[:lower:]' '[:upper:]')"  # Auth=WPA2-PSK
-  MaxRate="$(${AP} | grep "maxRate" | awk '{print $2}') Mbps"   # MaxRate='144 Mbps'
-  SignalStrength="$(${AP} | grep "agrCtlRSSI" | awk '{print $2}')" # SignalStrength=-44 
-  Noice="$(${AP} | grep "agrCtlNoise" | awk '{print $2}')"   # Noice=-92
-  Channel="$(${AP} | grep "channel" | awk '{print $2}')"    # Channel=1
+  SSID="$(echo "${AP}" | grep "\ SSID" | cut -d: -f2- | sed 's/ //')"  # SSID=WppW
+  Auth="$(echo "${AP}" | grep "link auth" | awk '{print $3}' | tr '[:lower:]' '[:upper:]')"  # Auth=WPA2-PSK
+  MaxRate="$(echo "${AP}" | grep "maxRate" | awk '{print $2}') Mbps"   # MaxRate='144 Mbps'
+  SignalStrength="$(echo "${AP}" | grep "agrCtlRSSI" | awk '{print $2}')" # SignalStrength=-44 
+  Noice="$(echo "${AP}" | grep "agrCtlNoise" | awk '{print $2}')"   # Noice=-92
+  Channel="$(echo "${AP}" | grep "channel" | awk '{print $2}')"    # Channel=1
+  BSSID="$(echo "${AP}" | grep "BSSID" | awk '{print $2}')"    # BSSID=4:d9:f5:da:c0:40
   [ "${Channel%%,*}" -gt 15 ] && Frequency="5" || Frequency="2.4"
   
   # Calculate the Signal to Noice Ration and set a text for it
@@ -451,11 +452,12 @@ if [ ! "$(${AP})" = "AirPort: Off" ]; then
   Noice_block="${ESC}${HeadBack};${HeadText}mNoice:${Reset}${ESC}${DataBack};${DataText}m ${Noice} dB ${Reset}  "
   QualityBlock="${ESC}${HeadBack};${HeadText}mQuality:${Reset}${ESC}${DataBack};${DataText}m ${SNRText} ${Reset}  "
   Channel_block="${ESC}${HeadBack};${HeadText}mChannel:${Reset}${ESC}${DataBack};${DataText}m ${Channel} ${Reset}  "
+  BSSID_block="${ESC}${HeadBack};${HeadText}mBSSID:${Reset}${ESC}${DataBack};${DataText}m ${BSSID} ${Reset}  "
   Frequency_block="${ESC}${HeadBack};${HeadText}mFrequency:${Reset}${ESC}${DataBack};${DataText}m ${Frequency} GHz ${Reset} "
 
   # Print the information
   printf "${ESC}${WhiteFont};${BoldFace};${BlackBack}mWi-Fi details:${Reset}  \n"
-  printf "${SSID_block}${Auth_block}${Max_block}${Signal_block}${Noice_block}${QualityBlock}${Channel_block}${Frequency_block}\n"
+  printf "${SSID_block}${BSSID_block}${Auth_block}${Max_block}${Signal_block}${Noice_block}${QualityBlock}${Channel_block}${Frequency_block}\n"
 fi
 
 exit 0
