@@ -416,26 +416,28 @@ fi
 #   <10   dB AP may be detectable, but rarely useful signal; rarely maintains association.
 
 # First, determine if WiFi is active:
-WiFiDevice="$(networksetup -listallhardwareports | grep -A1 "^Hardware Port: Wi-Fi" | tail -1 | awk '{print $NF}')"    # Ex: WiFiDevice=en1
-NetworkPower="$(networksetup -getairportpower $WiFiDevice | awk '{print $NF}')"                                        # Ex: NetworkPower=On
+WiFiDevice="$(networksetup -listallhardwareports | grep -A1 "^Hardware Port: Wi-Fi" | tail -1 | awk '{print $NF}')"         # Ex: WiFiDevice=en1
+NetworkPower="$(networksetup -getairportpower $WiFiDevice | awk '{print $NF}')"                                             # Ex: NetworkPower=On
 if [ "$NetworkPower" = "On" ]; then
     # See if we should use the old system:
     AP="$(/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I)"
     if [ -n "$(echo "$AP" | grep "AirPort: Off")" ]; then
         # Gather information
-        SSID="$(echo "$AP" | grep "\ SSID" | cut -d: -f2- | sed 's/ //')"                                              # SSID=WppW
-        Auth="$(echo "$AP" | grep "link auth" | awk '{print $3}' | tr '[:lower:]' '[:upper:]')"                        # Auth=WPA2-PSK
-        MaxRate="$(echo "$AP" | grep "maxRate" | awk '{print $2}') Mbps"                                               # MaxRate='144 Mbps'
-        SignalStrength="$(echo "$AP" | grep "agrCtlRSSI" | awk '{print $2}')"                                          # SignalStrength=-44
-        Noice="$(echo "$AP" | grep "agrCtlNoise" | awk '{print $2}')"                                                  # Noice=-92
-        Channel="$(echo "$AP" | grep "channel" | awk '{print $2}')"                                                    # Channel=1
+        SSID="$(echo "$AP" | grep "\ SSID" | cut -d: -f2- | sed 's/ //')"                                                   # SSID=WppW
+        Auth="$(echo "$AP" | grep "link auth" | awk '{print $3}' | tr '[:lower:]' '[:upper:]')"                             # Auth=WPA2-PSK
+        MaxRate="$(echo "$AP" | grep "maxRate" | awk '{print $2}') Mbps"                                                    # MaxRate='144 Mbps'
+        SignalStrength="$(echo "$AP" | grep "agrCtlRSSI" | awk '{print $2}')"                                               # SignalStrength=-44
+        Noice="$(echo "$AP" | grep "agrCtlNoise" | awk '{print $2}')"                                                       # Noice=-92
+        Channel="$(echo "$AP" | grep "channel" | awk '{print $2}')"                                                         # Channel=1
         [ "${Channel%%,*}" -gt 15 ] && Frequency="5" || Frequency="2.4"
     # Else, use the modern approach
     elif [ -n "$(echo "$AP" | grep "WARNING: The airport command line tool is deprecated")" ]; then
         # Use 'system_profiler' to get WiFi details:
         # But only if 'jq' is present
         if type -p jq &>/dev/null; then
+            printf "... investigating WiFi...\r"
             WiFiDetails="$(system_profiler -json SPAirPortDataType basic | jq --arg iface "$WiFiDevice" '.SPAirPortDataType[].spairport_airport_interfaces[] | select(._name == $iface) | .spairport_current_network_information')"
+            printf "%25s" " "                                                                                               # Print 25 spaces to overwrite the previous text. Must add a '\r' later!
             # Ex:  WiFiDetails='{
             #      "_name": "eduroam",
             #      "spairport_network_channel": "52 (5GHz, 40MHz)",
@@ -447,13 +449,13 @@ if [ "$NetworkPower" = "On" ]; then
             #      "spairport_security_mode": "spairport_security_mode_wpa2_enterprise",
             #      "spairport_signal_noise": "-66 dBm / -97 dBm"
             #    }'
-            SSID="$(echo "$WiFiDetails" | jq -r '._name')"                                                                 # Ex: SSID=eduroam
-            Auth="$(echo "$WiFiDetails" | jq -r '.spairport_security_mode' | sed 's/spairport_security_mode_//')"          # Ex: Auth=wpa2_enterprise
-            MaxRate="$(echo "$WiFiDetails" | jq -r '.spairport_network_rate')"                                             # Ex: MaxRate=400
-            SignalStrength="$(echo "$WiFiDetails" | jq -r '.spairport_signal_noise' | awk '{print $1}')"                   # Ex: SignalStrength=-66
-            Noice="$(echo "$WiFiDetails" | jq -r '.spairport_signal_noise' | cut -d\/ -f2 | awk '{print $1}')"             # Ex: Noice=-97
-            Channel="$(echo "$WiFiDetails" | jq -r '.spairport_network_channel' | awk '{print $1}')"                       # Ex: Channel=52
-            Frequency="$(echo "$WiFiDetails" | jq -r '.spairport_network_channel' | cut -d\( -f2 | grep -Eo "^[0-9.]")"    # Ex: Frequency=5
+            SSID="$(echo "$WiFiDetails" | jq -r '._name')"                                                                  # Ex: SSID=eduroam
+            Auth="$(echo "$WiFiDetails"|jq -r '.spairport_security_mode'|rev|cut -d'_' -f1-2|rev|sed 's/_/ /;s/wpa/WPA/')"  # Ex: Auth='WPA2 enterprise'
+            MaxRate="$(echo "$WiFiDetails" | jq -r '.spairport_network_rate')"                                              # Ex: MaxRate=400
+            SignalStrength="$(echo "$WiFiDetails" | jq -r '.spairport_signal_noise' | awk '{print $1}')"                    # Ex: SignalStrength=-66
+            Noice="$(echo "$WiFiDetails" | jq -r '.spairport_signal_noise' | cut -d\/ -f2 | awk '{print $1}')"              # Ex: Noice=-97
+            Channel="$(echo "$WiFiDetails" | jq -r '.spairport_network_channel' | awk '{print $1}')"                        # Ex: Channel=52
+            Frequency="$(echo "$WiFiDetails" | jq -r '.spairport_network_channel' | cut -d\( -f2 | grep -Eo "^[0-9.]")"     # Ex: Frequency=5
         else
             # OK, so then we will use 'wdutil' instead
             ### Note 1: requires 'sudo'
@@ -466,12 +468,12 @@ if [ "$NetworkPower" = "On" ]; then
                 #             Tx Rate              : 400.0 Mbps
                 #             Security             : WPA2 Enterprise
                 #             Channel              : 5g52/40'
-                SSID="$(echo "$WDINFO" | grep "\ SSID" | cut -d: -f2- | sed 's/ //')"                    # SSID='<redacted>'
-                Auth="$(echo "$WDINFO" | grep "Security" | cut -d: -f2- | sed 's/ //')"                  # Auth='WPA2 Enterprise'
-                MaxRate="$(echo "$WDINFO" | grep "Tx Rate" | cut -d: -f2- | sed 's/ //')"                # MaxRate='400.0 Mbps'
-                SignalStrength="$(echo "$WDINFO" | grep "RSSI" | awk '{print $3}')"                      # SignalStrength=-64
-                Noice="$(echo "$WDINFO" | grep "Noise" | awk '{print $3}')"                              # Noice=-99
-                Channel="$(echo "$WDINFO" | grep "Channel" | cut -d\/ -f2)"                              # Channel=40
+                SSID="$(echo "$WDINFO" | grep "\ SSID" | cut -d: -f2- | sed 's/ //')"                                       # SSID='<redacted>'
+                Auth="$(echo "$WDINFO" | grep "Security" | cut -d: -f2- | sed 's/ //')"                                     # Auth='WPA2 Enterprise'
+                MaxRate="$(echo "$WDINFO" | grep "Tx Rate" | cut -d: -f2- | sed 's/ //')"                                   # MaxRate='400.0 Mbps'
+                SignalStrength="$(echo "$WDINFO" | grep "RSSI" | awk '{print $3}')"                                         # SignalStrength=-64
+                Noice="$(echo "$WDINFO" | grep "Noise" | awk '{print $3}')"                                                 # Noice=-99
+                Channel="$(echo "$WDINFO" | grep "Channel" | cut -d\/ -f2)"                                                 # Channel=40
                 if [ "$(echo "$WDINFO" | grep "Channel" |  cut -d: -f2 | cut -c2-3)" = "5g" ]; then
                     Frequency="5"
                 else
@@ -514,7 +516,7 @@ if [ "$NetworkPower" = "On" ]; then
     Frequency_block="${ESC}${HeadBack};${HeadText}mFrequency:${Reset}${ESC}${DataBack};${DataText}m ${Frequency} GHz ${Reset} "
 
     # Print the information
-    printf "${ESC}${WhiteFont};${BoldFace};${BlackBack}mWi-Fi details:${Reset}  \n"
+    printf "${ESC}${WhiteFont};${BoldFace};${BlackBack}m\rWi-Fi details:${Reset}  \n"
     printf "${SSID_block}${Auth_block}${Max_block}${Signal_block}${Noice_block}${QualityBlock}${Channel_block}${Frequency_block}\n"
 fi
 
