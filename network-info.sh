@@ -436,7 +436,8 @@ if [ "$NetworkPower" = "On" ]; then
         # But only if 'jq' is present
         if type -p jq &>/dev/null; then
             printf "... investigating WiFi...\r"
-            WiFiDetails="$(system_profiler -json SPAirPortDataType basic | jq --arg iface "$WiFiDevice" '.SPAirPortDataType[].spairport_airport_interfaces[] | select(._name == $iface) | .spairport_current_network_information')"
+            # WiFiDetails="$(system_profiler -json SPAirPortDataType basic | jq --arg iface "$WiFiDevice" '.SPAirPortDataType[].spairport_airport_interfaces[] | select(._name == $iface) | .spairport_current_network_information')"
+            WiFiDetails="$(system_profiler -json SPAirPortDataType basic | jq -r --arg iface "$WiFiDevice" '.SPAirPortDataType[].spairport_airport_interfaces[]? | select(._name == $iface) | .spairport_current_network_information // empty')"
             printf "%25s" " "                                                                                               # Print 25 spaces to overwrite the previous text. Must add a '\r' later!
             # Ex:  WiFiDetails='{
             #      "_name": "eduroam",
